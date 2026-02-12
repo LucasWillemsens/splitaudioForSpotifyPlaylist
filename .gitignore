@@ -1,0 +1,23 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Ignored default folder with query files
+/queries/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+# ide's
+.idea
+*.iml
+*.iws
+# OS generated files
+.DS_Store
+Thumbs.db
+# Logslogs/
+*.log
+# Compiled class files
+*.pyc
+# Virtual environment
+venv/
