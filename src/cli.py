@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-
-import sys
 import pathlib
-import argparse
+import click
 from datetime import datetime, timedelta
 import csv
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
 
-
-TIME_FORMATS = {1: {True: '%M:%S.%f', False: '%M:%S'},
-                2: {True: '%H:%M:%S.%f', False: '%H:%M:%S'}}
-
-AUDIO_OUT_CONVERSION = {
-    'm4a': 'mp3'
-}
+try:
+    # When imported as part of a package (preferred)
+    from .common import TIME_FORMATS, AUDIO_OUT_CONVERSION
+except ImportError:
+    # When run/imported as a flat module (e.g. `import cli`)
+    from common import TIME_FORMATS, AUDIO_OUT_CONVERSION
 
 
 def split_audio(input_data: dict = [],
@@ -229,56 +226,15 @@ def create_track_data(title, extension,
     }
 
 
-def main(argv):
-    input_file = ''
-    csv_file = ''
-    output_path = None
-    album_name = None
-    album_year = None
-    dry_run = False
-
-    try:
-        parser = argparse.ArgumentParser(prog='splitaudio.py')
-        parser.add_argument('-i', '--input',
-                            type=pathlib.Path,
-                            help='Audio file to be split into tracks',
-                            metavar='INPUT')
-        parser.add_argument('-c', '--csv',
-                            type=pathlib.Path,
-                            help='CSV delimited text file containing the track '
-                                 'names and time position in the source '
-                                 'audio file',
-                            metavar='CSV')
-        parser.add_argument('-o', '--output',
-                            type=pathlib.Path,
-                            help='Output path where split tracks are to be'
-                                 ' saved',
-                            metavar='OUTPUT')
-        parser.add_argument('-r', '--artist',
-                            help='Music artist',
-                            metavar='ARTIST')
-        parser.add_argument('-a', '--album',
-                            help='Album title',
-                            metavar='ALBUM')
-        parser.add_argument('-y', '--year', type=int,
-                            help='Album year of release',
-                            metavar='YEAR')
-        parser.add_argument('-d', '--dryrun',
-                            action='store_true',
-                            help='Perform a dry run without processing')
-
-        args = parser.parse_args(argv)
-    except Exception:
-        parser.usage()
-        sys.exit(2)
-
-    input_file = args.input
-    csv_file = args.csv
-    album_name = args.album
-    album_year = args.year
-    album_artist = args.artist
-    output_path = args.output
-    dry_run = args.dryrun
+def run_split(input_file, csv_file, output_path, album_artist, album_name, album_year, dry_run):
+    # Click provides validated `pathlib.Path` objects when requested; keep
+    # the rest of the original behaviour the same.
+    if not isinstance(input_file, pathlib.Path):
+        input_file = pathlib.Path(input_file)
+    if not isinstance(csv_file, pathlib.Path):
+        csv_file = pathlib.Path(csv_file)
+    if output_path and not isinstance(output_path, pathlib.Path):
+        output_path = pathlib.Path(output_path)
 
     if str(input_file).startswith('~'):
         input_file = pathlib.Path('{0}{1}'.format(input_file.home(),
@@ -383,5 +339,27 @@ def main(argv):
         split_audio(track_data, audio_file, output_path, dry_run)
 
 
+@click.command()
+@click.option('-i', '--input', 'input_file', required=True,
+              type=click.Path(exists=True, path_type=pathlib.Path),
+              help='Audio file to be split into tracks')
+@click.option('-c', '--csv', 'csv_file', required=True,
+              type=click.Path(exists=True, path_type=pathlib.Path),
+              help='CSV delimited text file containing the track names and time position in the source audio file')
+@click.option('-o', '--output', 'output_path', required=False,
+              type=click.Path(path_type=pathlib.Path),
+              help='Output path where split tracks are to be saved')
+@click.option('-r', '--artist', 'album_artist', required=False,
+              help='Music artist')
+@click.option('-a', '--album', 'album_name', required=False,
+              help='Album title')
+@click.option('-y', '--year', 'album_year', type=int, required=False,
+              help='Album year of release')
+@click.option('-d', '--dryrun', 'dry_run', is_flag=True, default=False,
+              help='Perform a dry run without processing')
+def main(input_file, csv_file, output_path, album_artist, album_name, album_year, dry_run):
+    run_split(input_file, csv_file, output_path, album_artist, album_name, album_year, dry_run)
+
+
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
