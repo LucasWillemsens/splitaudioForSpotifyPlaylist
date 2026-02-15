@@ -1,15 +1,28 @@
 [tool.poetry]
 name = "splitaudio"
-version = "0.1.0"
-description = ""
+version = "0.2.0"
+description = "Split a single audio file into separate tracks using a CSV cue list"
 authors = ["Andrew Hendley <amhendley@gmail.com>"]
+packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.12"
 pydub = "^0.25.1"
 mutagen = "^1.45.1"
+click = "^8.1.0"
+audioop-lts = { version = "^0.2.2", python = "^3.13" }
+tk = "^0.1.0"
+future = "^1.0.0"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.extras]
+gui = ["kivy", "kivymd"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+
+[tool.poetry.scripts]
+splitaudio = "src.cli:main"
+splitaudio-gui = "src.gui:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
