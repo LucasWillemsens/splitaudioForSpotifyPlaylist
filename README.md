@@ -25,17 +25,50 @@ basic ID3 tags using `mutagen`.
   (required by `pydub`).
 - Optional (GUI): Tkinter (typically bundled with Python, but not always)
 
-Dependencies are managed with Poetry. Install project dependencies with:
+Dependencies are managed with Poetry. Python 3.12 or newer is required.
+
+### Recommended: install as a CLI tool (usable from any shell)
+
+With [uv](https://docs.astral.sh/uv/), the commands are installed in an
+isolated environment and placed on `PATH`:
+
+```bash
+uv tool install .
+```
+
+(If the default interpreter is older than 3.12, select one explicitly, e.g.
+`uv tool install --python 3.12 .` — uv downloads a managed Python if needed.)
+
+This installs both the `splitaudio` and `splitaudio-gui` executables into
+`~/.local/bin`. After changing the source code, refresh the installed tool
+by re-running the same command with `--force`.
+
+### With Poetry (development)
 
 ```bash
 poetry install
 ```
 
-If you don't use Poetry, install this project with pip:
+This creates an isolated virtualenv; the CLI is *not* placed on `PATH`
+by itself. Run it through Poetry:
+
+```bash
+poetry run splitaudio --help
+```
+
+or activate the environment first (`poetry shell`) and then run
+`splitaudio` directly.
+
+### With pip
+
+Requires Python 3.12+ (check with `python3 --version`):
 
 ```bash
 pip install -e .
 ```
+
+If the default `pip` belongs to an older Python, use
+`python3.12 -m pip install -e .` (or newer) instead.
 
 Install `ffmpeg` on Debian/Ubuntu:
 
@@ -82,7 +115,8 @@ First Track,3:12,My Artist,My Album,2021
 
 ## Command-line usage
 
-After installing, the CLI is available as `splitaudio`:
+After installing (e.g. with `uv tool install .`, or inside an activated
+Poetry environment), the CLI is available as `splitaudio`:
 
 ```bash
 splitaudio -i /path/to/source.mp3 -c /path/to/tracks.csv [-o /out/dir] [-r ARTIST] [-a ALBUM] [-y YEAR] [-d]
