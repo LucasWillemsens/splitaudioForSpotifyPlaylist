@@ -322,7 +322,13 @@ def run_split(input_file, csv_file, output_path, album_artist, album_name, album
             print("Simulation: Processing row ({0}) "
                   "with track position ({1})".format(track_title,
                                                      track_position))
-        end_time = datetime.strptime(str(file_duration), '%H:%M:%S.%f')
+        # `str(timedelta)` only includes microseconds when they are non-zero,
+        # so accept both `%H:%M:%S` and `%H:%M:%S.%f` duration strings.
+        duration_str = str(file_duration)
+        if '.' in duration_str:
+            end_time = datetime.strptime(duration_str, '%H:%M:%S.%f')
+        else:
+            end_time = datetime.strptime(duration_str, '%H:%M:%S')
 
         track_data = create_track_data(
             track_title,
