@@ -7,8 +7,10 @@ the source audio file, exports each track to a numbered file, and writes
 basic ID3 tags using `mutagen`.
 
 **Key behaviours**
-- Input audio type is detected from the input file suffix (e.g. `.mp3`, `.m4a`).
+- Input audio type is detected from the input file suffix (e.g. `.mp3`, `.m4a`, `.wav`).
 - `m4a` inputs are exported as `mp3` by default (see `AUDIO_OUT_CONVERSION`).
+- `.wav` inputs are exported as `.wav` (lossless, no `ffmpeg` needed); the ID3
+  tags are written into the RIFF `id3 ` chunk using `mutagen.wave.WAVE`.
 - Default output directory is the input file's parent directory.
 - Paths beginning with `~` are expanded.
 - Output files are named using the pattern: `01. Title.ext` (two-digit track
@@ -158,10 +160,12 @@ splitaudio-gui --input album.m4a --csv tracks.csv --output ./out --artist "Artis
   duration.
 - Slices audio in milliseconds and exports each track to a file named
   `NN. Title.ext` where `ext` is the audio output type (converted for
-  certain inputs, e.g. `m4a` -> `mp3`).
+  certain inputs, e.g. `m4a` -> `mp3`; `.wav` stays `.wav`).
 - Exports include basic tags (`title`, `tracknumber`, `discnumber`, and
-  `artist`/`album`/`date` if provided). After export the app calls
-  `mutagen.easyid3.EasyID3` to ensure ID3 tags are written correctly.
+  `artist`/`album`/`date` if provided). After export the app applies the
+  tags with `mutagen`: `mutagen.easyid3.EasyID3` for MP3-style files and
+  `mutagen.wave.WAVE` for WAV files (which store their ID3 tags inside a
+  RIFF `id3 ` chunk rather than at the start of the file).
 
 ### Examples
 
@@ -185,3 +189,5 @@ splitaudio -i album.mp3 -c tracks.csv -o ./out -r "Artist Name" -a "Album Title"
   times; extremely large durations or unusual timestamp formats may fail.
 - `ffmpeg` must be installed and available in `PATH` for `pydub` to handle
   non-WAV formats such as MP3 or M4A.
+- You can use audacity in combination with https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi to rip your computer volume and generate HQ spotify audio .wav files from playlists, then export the metadata from a playlist using https://www.spotlistr.com/search/spotify/export/ to generate both inputfiles. TODO automatically fetch the two input files and the ProjectName from a playlist id.
+- With the output files you can easily burn a CD. TODO build a pipeline to automatically burn CDs after output is generated

@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import csv
 from pydub import AudioSegment
 from mutagen.easyid3 import EasyID3
+from mutagen.id3 import TALB, TCON, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK
+from mutagen.wave import WAVE
 
 try:
     # When imported as part of a package (preferred)
@@ -99,6 +101,54 @@ def split_audio(input_data: dict = [],
         )
 
 
+# EasyID3 key -> ID3 frame class, used to tag RIFF/WAVE files. WAV files
+# store their ID3 tags inside an 'id3 ' chunk, not at the start of the file.
+WAVE_ID3_FRAMES = {
+    'title': TIT2,
+    'artist': TPE1,
+    'albumartist': TPE2,
+    'album': TALB,
+    'genre': TCON,
+    'date': TDRC,
+    'tracknumber': TRCK,
+    'discnumber': TPOS
+}
+
+
+class WaveEasyID3:
+    """EasyID3-style tag writer for RIFF/WAVE (.wav) files.
+
+    WAV files keep their ID3 tags inside a RIFF 'id3 ' chunk, so they do not
+    start with an ID3 header and `EasyID3` cannot open them (raising
+    "<file> doesn't start with an ID3 tag"). This class exposes the same
+    `tags[key] = value` / `save()` interface as `EasyID3`, translating the
+    EasyID3 keys into their ID3 frame equivalents.
+    """
+
+    def __init__(self, file_path):
+        self._wave = WAVE(file_path)
+        if self._wave.tags is None:
+            self._wave.add_tags()
+
+    def __setitem__(self, key, value):
+        frame = WAVE_ID3_FRAMES[key]
+        self._wave.tags.setall(frame.__name__, [frame(encoding=3, text=str(value))])
+
+    def save(self):
+        self._wave.save()
+
+
+def load_id3_tags(file_path):
+    """Open the ID3 tags of a media file for writing.
+
+    WAV files are wrapped in `WaveEasyID3` (their ID3 tags live in a RIFF
+    'id3 ' chunk); all other files are handled by `EasyID3` directly.
+    """
+    if pathlib.Path(file_path).suffix.lower() in ('.wav', '.wave'):
+        return WaveEasyID3(file_path)
+    return EasyID3(file_path)
+
+
 def set_id3_tag(file_path, title=None, artist=None,
                 album=None, genre=None,
                 year=None,
@@ -176,7 +226,7 @@ def set_id3_tag(file_path, title=None, artist=None,
     :param disc_num: The disc number
     :param total_disc_num: The total number discs
     """
-    tags = EasyID3(file_path)
+    tags = load_id3_tags(file_path)
 
     if title:
         tags['title'] = title

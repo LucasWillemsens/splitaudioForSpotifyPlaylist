@@ -15,7 +15,8 @@ from src.cli import (
     create_track_data,
     main,
     TIME_FORMATS,
-    AUDIO_OUT_CONVERSION
+    AUDIO_OUT_CONVERSION,
+    load_id3_tags
 )
 
 
@@ -43,6 +44,10 @@ class TestAudioOutConversion:
     def test_audio_conversion_m4a(self):
         """Test m4a format conversion."""
         assert AUDIO_OUT_CONVERSION['m4a'] == 'mp3'
+
+    def test_audio_conversion_wav_not_converted(self):
+        """Test wav format is kept as wav (split losslessly)."""
+        assert 'wav' not in AUDIO_OUT_CONVERSION
 
 
 class TestCreateTrackData:
@@ -223,6 +228,111 @@ class TestSetId3Tag:
 
         call_args = [call for call in mock_tags.__setitem__.call_args_list]
         assert any(call[0] == ('date', '1999') for call in call_args)
+
+
+class TestSetId3TagWav:
+    """Tests for set_id3_tag with RIFF/WAVE (.wav) files."""
+
+    @patch('src.cli.WAVE')
+    def test_set_id3_tag_wav_all_fields(self, mock_wave):
+        """Test setting all ID3 tags on a wav file through mutagen.wave.WAVE."""
+        mock_wave_file = MagicMock()
+        # pydub exports untagged wav files, so no ID3 chunk exists yet
+        mock_wave_file.tags = None
+        mock_wave_file.add_tags.side_effect = \
+            lambda: setattr(mock_wave_file, 'tags', MagicMock())
+        mock_wave.return_value = mock_wave_file
+
+        set_id3_tag(
+            file_path='/path/to/01. Test Title.wav',
+            title='Test Title',
+            artist='Test Artist',
+            album='Test Album',
+            genre='Rock',
+            year=2023,
+            track_num=1,
+            total_track_num=10,
+            disc_num=1,
+            total_disc_num=1
+        )
+
+        mock_wave.assert_called_once_with('/path/to/01. Test Title.wav')
+        mock_wave_file.add_tags.assert_called_once()
+
+        # EasyID3 keys must be translated into their ID3 frames
+        frames = {
+            setall_call.args[0]: setall_call.args[1][0]
+            for setall_call in mock_wave_file.tags.setall.call_args_list
+        }
+        assert list(frames['TIT2'].text) == ['Test Title']
+        assert list(frames['TPE1'].text) == ['Test Artist']
+        assert list(frames['TPE2'].text) == ['Test Artist']
+        assert list(frames['TALB'].text) == ['Test Album']
+        assert list(frames['TCON'].text) == ['Rock']
+        assert [str(t) for t in frames['TDRC'].text] == ['2023']
+        assert list(frames['TRCK'].text) == ['1/10']
+        assert list(frames['TPOS'].text) == ['1/1']
+
+        mock_wave_file.save.assert_called_once()
+
+    @patch('src.cli.WAVE')
+    def test_set_id3_tag_wav_existing_tags(self, mock_wave):
+        """Test that existing wav tags are reused without re-adding them."""
+        mock_wave_file = MagicMock()
+        mock_wave.return_value = mock_wave_file
+
+        set_id3_tag(
+            file_path='/path/to/01. Test Title.wav',
+            title='Test Title'
+        )
+
+        mock_wave_file.add_tags.assert_not_called()
+        mock_wave_file.save.assert_called_once()
+
+    @patch('src.cli.EasyID3')
+    @patch('src.cli.WAVE')
+    def test_set_id3_tag_wav_does_not_use_easyid3(self, mock_wave, mock_easy_id3):
+        """Test that EasyID3 is not used for wav files."""
+        mock_wave_file = MagicMock()
+        mock_wave.return_value = mock_wave_file
+
+        set_id3_tag(
+            file_path='/path/to/01. Test Title.wav',
+            title='Test Title'
+        )
+
+        mock_easy_id3.assert_not_called()
+        mock_wave_file.save.assert_called_once()
+
+
+class TestLoadId3Tags:
+    """Tests for load_id3_tags file type dispatch."""
+
+    @patch('src.cli.EasyID3')
+    def test_load_id3_tags_mp3_uses_easyid3(self, mock_easy_id3):
+        """Test that non-wav files are handled by EasyID3."""
+        result = load_id3_tags('/path/to/file.mp3')
+
+        mock_easy_id3.assert_called_once_with('/path/to/file.mp3')
+        assert result == mock_easy_id3.return_value
+
+    @patch('src.cli.WAVE')
+    def test_load_id3_tags_wav_uses_wave(self, mock_wave):
+        """Test that wav files are handled through mutagen.wave.WAVE."""
+        result = load_id3_tags('/path/to/file.wav')
+
+        mock_wave.assert_called_once_with('/path/to/file.wav')
+        assert result is not None
+
+    @patch('src.cli.WAVE')
+    def test_load_id3_tags_wav_extensions(self, mock_wave):
+        """Test that wav, wave and upper-case extensions are detected."""
+        for file_path in ('/path/to/file.wav',
+                          '/path/to/file.WAV',
+                          '/path/to/file.wave'):
+            mock_wave.reset_mock()
+            load_id3_tags(file_path)
+            mock_wave.assert_called_once_with(file_path)
 
 
 class TestSplitAudio:
@@ -614,6 +724,64 @@ class TestMainCliCommand:
 
 class TestIntegration:
     """Integration tests for cli.py."""
+
+    def test_full_workflow_wav_input(self):
+        """End-to-end: split a real .wav file into tagged .wav files.
+
+        Regression test: before wav support this failed with
+        "... .wav' doesn't start with an ID3 tag".
+        """
+        from pydub import AudioSegment
+        from mutagen.wave import WAVE
+
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a real (silent) 3-second wav source file
+            source_file = pathlib.Path(tmpdir) / 'album.wav'
+            AudioSegment.silent(3000, frame_rate=44100).export(
+                out_f=str(source_file), format='wav')
+
+            csv_file = pathlib.Path(tmpdir) / 'cue.csv'
+            with open(csv_file, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['title', 'position'])
+                writer.writeheader()
+                writer.writerow({'title': 'Song 1', 'position': '0:00'})
+                writer.writerow({'title': 'Song 2', 'position': '0:01'})
+
+            output_dir = pathlib.Path(tmpdir) / 'output'
+            output_dir.mkdir()
+
+            result = runner.invoke(main, [
+                '-i', str(source_file),
+                '-c', str(csv_file),
+                '-o', str(output_dir),
+                '-r', 'Test Artist',
+                '-a', 'Test Album',
+                '-y', '2023'
+            ])
+
+            assert result.exit_code == 0, result.output
+
+            # Tracks must be exported as wav (no conversion)
+            track1 = output_dir / '01. Song 1.wav'
+            track2 = output_dir / '02. Song 2.wav'
+            assert track1.exists()
+            assert track2.exists()
+
+            # ID3 tags must be written into the RIFF 'id3 ' chunk
+            tags = WAVE(str(track1)).tags
+            assert [str(t) for t in tags.getall('TIT2')[0].text] == ['Song 1']
+            assert [str(t) for t in tags.getall('TPE1')[0].text] == ['Test Artist']
+            assert [str(t) for t in tags.getall('TPE2')[0].text] == ['Test Artist']
+            assert [str(t) for t in tags.getall('TALB')[0].text] == ['Test Album']
+            assert [str(t) for t in tags.getall('TDRC')[0].text] == ['2023']
+            assert tags.getall('TRCK')
+            assert tags.getall('TPOS')
+
+            # Each track must keep the correct duration
+            assert WAVE(str(track1)).info.length == pytest.approx(1.0)
+            assert WAVE(str(track2)).info.length == pytest.approx(2.0)
 
     @patch('src.cli.AudioSegment')
     @patch('src.cli.set_id3_tag')
